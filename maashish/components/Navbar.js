@@ -9,7 +9,7 @@ const navLinks = [
   { label: 'Machines', href: '/machines' },
   { label: 'Dashboard', href: '/dashboard' },
   { label: 'Tools', href: '/tools' },
-  { label: 'Packing', href: '/packing' },
+  { label: 'Features', href: '/Features' },
 ];
 
 export default function Navbar() {
@@ -25,7 +25,7 @@ export default function Navbar() {
             <Activity size={14} className="text-[#c9a84c]" />
           </div>
           <span className="font-display text-[22px] tracking-widest text-[#f0ede8] leading-none">
-            MA <span className="text-[#c9a84c]">AASHISH</span>
+            MAA <span className="text-[#c9a84c]">ASHISH</span>
           </span>
         </Link>
 

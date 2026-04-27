@@ -3,7 +3,7 @@ import { useState, useMemo } from 'react';
 import Head from 'next/head';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, Legend, Cell
+CartesianGrid, Legend, Cell, ReferenceLine
 } from 'recharts';
 import { useSheetData } from '../hooks/useSheetData';
 import { groupByDate, getDailyStats, getOperatorStats, getTodayStr } from '../lib/sheets';
@@ -55,7 +55,7 @@ export default function Dashboard() {
       const rows = byDate[date] || [];
       const s = getDailyStats(rows);
       const [d, m] = date.split('/');
-      return { date: `${d}/${m}`, rolls: s.totalRolls, active: s.active, idle: s.idle, sampling: s.sampling, utilisation: Math.round((s.active / (s.total || 1)) * 100) };
+      return { date: `${d}/${m}`, rolls: s.totalRolls, active: s.active, idle: s.idle, sampling: s.sampling, efficiency: s.avgEfficiency ?? 0 };
     });
   }, [recentDates, byDate]);
 
@@ -121,7 +121,7 @@ export default function Dashboard() {
 
   return (
     <>
-      <Head><title>Dashboard — MA Aashish</title></Head>
+      <Head><title>Dashboard — MAA Ashish</title></Head>
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8">
 
         {/* Header */}
@@ -160,20 +160,56 @@ export default function Dashboard() {
               <StatCard label="Top Operator" value={topOp?.name?.split(' ')[0] || '—'} sub={topOp ? `${topOp.rolls} rolls this period` : 'No data'} icon={User} />
             </div>
 
-            {/* Production trend */}
+            {/* Rolls per Machine chart */}
             <div className="stat-card space-y-4">
-              <SectionHeader label="Daily Production Trend" />
-              <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={dailyChartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" />
-                  <XAxis dataKey="date" tick={{ fill: '#5a5a5a', fontSize: 11, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: '#5a5a5a', fontSize: 11, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={tooltipStyle} />
-                  <Legend wrapperStyle={{ fontSize: '11px', fontFamily: 'DM Mono', color: '#5a5a5a' }} />
-                  <Line type="monotone" dataKey="rolls" stroke="#c9a84c" strokeWidth={2} dot={false} name="Total Rolls" />
-                  <Line type="monotone" dataKey="active" stroke="#3ecf6e" strokeWidth={1.5} dot={false} name="Active Machines" strokeDasharray="4 2" />
-                </LineChart>
-              </ResponsiveContainer>
+              <SectionHeader label="Rolls Produced per Machine" />
+              {(() => {
+                // Aggregate total rolls per machine across selected date range
+                const machineRolls = {};
+                rangeData.forEach(r => {
+                  if (!machineRolls[r.machineNumber]) machineRolls[r.machineNumber] = 0;
+                  machineRolls[r.machineNumber] += r.rolls;
+                });
+                const chartData = Object.entries(machineRolls)
+                  .map(([machine, rolls]) => ({ machine: `#${machine}`, machineNum: parseInt(machine), rolls }))
+                  .sort((a, b) => a.machineNum - b.machineNum);
+                const avgRolls = chartData.length ? Math.round(chartData.reduce((s, r) => s + r.rolls, 0) / chartData.length) : 0;
+                return (
+                  <>
+                    <ResponsiveContainer width="100%" height={240}>
+                    <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 20 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" vertical={false} />
+                        <XAxis
+                          dataKey="machine"
+                          tick={{ fill: '#3a3a3a', fontSize: 9, fontFamily: 'DM Mono' }}
+                          axisLine={false} tickLine={false}
+                          interval={9}
+                        />
+                        <YAxis tick={{ fill: '#5a5a5a', fontSize: 11, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
+                        <Tooltip
+                          contentStyle={tooltipStyle}
+                          formatter={(val) => [`${val} rolls`, 'Rolls']}
+                        />
+                        <ReferenceLine y={avgRolls} stroke="#c9a84c" strokeDasharray="4 2" strokeWidth={1} />
+                        <Line
+                          type="monotone"
+                          dataKey="rolls"
+                          stroke="#3ecf6e"
+                          strokeWidth={1.5}
+                          dot={{ fill: '#3ecf6e', r: 2, strokeWidth: 0 }}
+                          activeDot={{ r: 4, fill: '#c9a84c' }}
+                          name="Rolls"
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                    <div className="flex gap-4 text-xs font-mono text-[#5a5a5a]">
+                      <span className="flex items-center gap-1.5"><span className="w-3 h-1 rounded bg-[#c9a84c] opacity-60" />Avg: {avgRolls} rolls</span>
+                      <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#3ecf6e]" />Above avg</span>
+                      <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#2a4a35]" />Below avg</span>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
 
             {/* Machine status by day */}
@@ -256,53 +292,6 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
-
-            {/* Heatmap */}
-            <div className="stat-card space-y-4">
-              <SectionHeader label="Factory Floor Snapshot — Today" />
-              <div className="flex flex-wrap gap-1.5">
-                {machineNumbers.map(m => {
-                  const row = todayByMachine[m];
-                  const status = row?.status || 'idle';
-                  const rolls = row?.rolls || 0;
-                  const colors = {
-                    active: rolls >= 2 ? '#3ecf6e' : '#1a8040',
-                    idle: '#2a2a2a',
-                    sampling: '#7a6030',
-                  };
-                  return (
-                    <div
-                      key={m}
-                      className="relative group"
-                    >
-                      <div
-                        className="w-8 h-8 rounded-sm flex items-center justify-center cursor-default transition-opacity hover:opacity-80"
-                        style={{ backgroundColor: colors[status] || '#2a2a2a' }}
-                      >
-                        <span className="text-[8px] font-mono text-white/60">{m}</span>
-                      </div>
-                      {/* Tooltip */}
-                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block z-10 bg-[#1e1e1e] border border-[#2a2a2a] rounded px-2 py-1.5 text-[10px] font-mono whitespace-nowrap pointer-events-none">
-                        <p className="text-[#c9a84c]">Machine #{m}</p>
-                        {row ? (
-                          <>
-                            <p className="text-[#888888]">{row.operatorName || 'No operator'}</p>
-                            <p className="text-[#f0ede8]">{rolls} rolls · {row.rpm || 'N/A'} rpm</p>
-                          </>
-                        ) : <p className="text-[#5a5a5a]">No data today</p>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="flex gap-4 text-xs font-mono text-[#5a5a5a]">
-                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#3ecf6e]" />High output</span>
-                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#1a8040]" />Low output</span>
-                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#7a6030]" />Sampling</span>
-                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#2a2a2a]" />Idle</span>
-              </div>
-            </div>
-
             {/* Insights */}
             <InsightPanel insights={insights} />
           </>

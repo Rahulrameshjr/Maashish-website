@@ -30,7 +30,7 @@ export default function Home() {
 
   const totalMachines = todayData.length || 0;
   const idleRate = totalMachines ? Math.round((stats.idle / totalMachines) * 100) : 0;
-  const utilizationRate = totalMachines ? Math.round((stats.active / totalMachines) * 100) : 0;
+  const efficiencyDisplay = stats.avgEfficiency != null ? stats.avgEfficiency : null;
 
   // Format display date nicely
   const formattedDate = displayDate
@@ -44,7 +44,7 @@ export default function Home() {
 
   return (
     <>
-      <Head><title>MA Aashish — Operations</title></Head>
+      <Head><title>MAA Ashish — Operations</title></Head>
 
       <main className="min-h-screen">
         {/* Hero */}
@@ -55,7 +55,7 @@ export default function Home() {
               <div>
                 <p className="text-xs font-mono uppercase tracking-[0.3em] text-[#c9a84c] mb-3">Knitting Operations Center</p>
                 <h1 className="font-display text-6xl md:text-8xl text-[#f0ede8] leading-none tracking-wide">
-                  MA <span className="text-[#c9a84c]">AASHISH</span>
+                  MAA <span className="text-[#c9a84c]">ASHISH</span>
                 </h1>
                 <div className="flex items-center gap-2 mt-3">
                   <p className="text-[#5a5a5a] font-body text-sm">Textile Knitting Production</p>
@@ -150,8 +150,12 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="pt-2 border-t border-[#1e1e1e]">
-                  <p className="text-xs text-[#5a5a5a]">Floor utilisation</p>
-                  <p className="font-display text-4xl text-[#c9a84c] mt-1">{utilizationRate}<span className="text-lg text-[#5a5a5a]">%</span></p>
+                  <p className="text-xs text-[#5a5a5a]">Overall Efficiency</p>
+                  <p className="font-display text-4xl text-[#c9a84c] mt-1">
+                    {efficiencyDisplay != null
+                      ? <>{efficiencyDisplay}<span className="text-lg text-[#5a5a5a]">%</span></>
+                      : <span className="text-2xl text-[#3a3a3a]">N/A</span>}
+                    </p>
                 </div>
               </div>
 
@@ -171,7 +175,7 @@ export default function Home() {
                       <div key={op.name} className="flex items-center gap-3 py-2 border-b border-[#141414] last:border-0">
                         <span className="font-mono text-xs text-[#3a3a3a] w-4">0{i + 1}</span>
                         <span className="flex-1 text-sm font-body capitalize text-[#f0ede8]">{op.name}</span>
-                        <span className="text-xs text-[#5a5a5a] font-mono">{op.machines}m</span>
+                        <span className="text-xs text-[#5a5a5a] font-mono">{op.machines}machines</span>
                         <span className="font-mono text-sm text-[#c9a84c] font-medium">{op.rolls} rolls</span>
                       </div>
                     ))}

@@ -14,20 +14,44 @@ export async function fetchSheetData(range) {
   const res = await fetch(url);
   if (!res.ok) {
     const errText = await res.text();
+    if (res.status === 403) throw new Error('Access denied (403). Make sure the sheet is shared as "Anyone with the link → Viewer".');
     throw new Error(`Sheet fetch failed (${res.status}): ${errText}`);
   }
   const json = await res.json();
   return json.values || [];
 }
 
+// ─── Efficiency helpers ────────────────────────────────────────────────────────
+
+// Efficiency per row = (actCounter / exCounter) × 100
+// Column G = exCounter (expected counter — already in sheet)
+// Column H = actCounter (actual counter — from machine)
+export function calcEfficiency(actCounter, exCounter) {
+  if (!actCounter || !exCounter || exCounter <= 0 || actCounter <= 0) return null;
+  return Math.round((actCounter / exCounter) * 100 * 10) / 10;
+}
+
+// Overall efficiency for a set of rows = average of per-row efficiencies
+export function calcOverallEfficiency(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  const valid = rows.filter(r => r.actCounter > 0 && r.exCounter > 0);
+  if (!valid.length) return null;
+  const effValues = valid
+    .map(r => calcEfficiency(r.actCounter, r.exCounter))
+    .filter(e => e !== null);
+  if (!effValues.length) return null;
+  return Math.round((effValues.reduce((s, e) => s + e, 0) / effValues.length) * 10) / 10;
+}
+
+// ─── Sheet parsing ─────────────────────────────────────────────────────────────
+
 export function parseMainSheet(rows) {
   if (!Array.isArray(rows) || rows.length < 2) return [];
-  // skip header row
   return rows.slice(1).map((row) => {
     const date = row[0] || '';
     const machineNumber = parseInt(row[1]) || 0;
     const operatorName = (row[2] || '').trim();
-    const shift = row[3] || 'Day';
+    const shift = (row[3] || 'Day').trim();
     const rolls = parseFloat(row[4]) || 0;
     const rpmRaw = (row[5] || '').toString().trim().toLowerCase();
     const exCounter = row[6] ? parseFloat(row[6]) : null;
@@ -35,6 +59,7 @@ export function parseMainSheet(rows) {
 
     let status = 'idle';
     let rpm = null;
+
     if (rpmRaw === 'na' || rpmRaw === '') {
       status = 'idle';
     } else if (rpmRaw === 'sampling') {
@@ -47,14 +72,16 @@ export function parseMainSheet(rows) {
       }
     }
 
-    let efficiency = null;
-    if (exCounter && actCounter && exCounter > 0) {
-      efficiency = Math.round((actCounter / exCounter) * 100 * 10) / 10;
-    }
+    const efficiency = calcEfficiency(actCounter, exCounter);
 
-    return { date, machineNumber, operatorName, shift, rolls, rpm, exCounter, actCounter, status, efficiency };
+    return {
+      date, machineNumber, operatorName, shift, rolls,
+      rpm, exCounter, actCounter, efficiency, status,
+    };
   }).filter(r => r.machineNumber > 0);
 }
+
+// ─── Date helpers ──────────────────────────────────────────────────────────────
 
 export function getTodayStr() {
   const now = new Date();
@@ -68,6 +95,8 @@ export function filterByDate(data, dateStr) {
   if (!Array.isArray(data)) return [];
   return data.filter(r => r.date === dateStr);
 }
+
+// ─── Grouping helpers ──────────────────────────────────────────────────────────
 
 export function groupByDate(data) {
   if (!Array.isArray(data)) return {};
@@ -100,26 +129,27 @@ export function groupByOperator(data) {
   return map;
 }
 
+// ─── Stats ─────────────────────────────────────────────────────────────────────
+
 export function getDailyStats(dayData) {
   if (!Array.isArray(dayData) || dayData.length === 0) {
-    return { active: 0, idle: 0, sampling: 0, total: 0, totalRolls: 0, operators: [], avgRpm: 0 };
+    return { active: 0, idle: 0, sampling: 0, total: 0, totalRolls: 0, operators: [], avgEfficiency: null };
   }
 
-  // Deduplicate by machine number — one machine may appear in Day + Night shift
-  // For status: if either shift is active, machine is active
-  // For rolls: sum both shifts
+  // Deduplicate by machine number — same machine appears in Day + Night shift rows
   const machineMap = new Map();
   dayData.forEach(r => {
     const existing = machineMap.get(r.machineNumber);
     if (!existing) {
       machineMap.set(r.machineNumber, { ...r });
     } else {
-      // Combine shifts: sum rolls, prefer 'active' status, keep higher rpm
       machineMap.set(r.machineNumber, {
         ...existing,
         rolls: existing.rolls + r.rolls,
         status: r.status === 'active' ? 'active' : existing.status,
         rpm: Math.max(existing.rpm || 0, r.rpm || 0) || null,
+        actCounter: (existing.actCounter || 0) + (r.actCounter || 0),
+        exCounter: (existing.exCounter || 0) + (r.exCounter || 0),
       });
     }
   });
@@ -130,18 +160,18 @@ export function getDailyStats(dayData) {
   const sampling = deduped.filter(r => r.status === 'sampling');
   const totalRolls = deduped.reduce((s, r) => s + r.rolls, 0);
   const operators = [...new Set(active.map(r => r.operatorName).filter(Boolean))];
-  const avgRpm = active.filter(r => r.rpm).length
-    ? Math.round((active.filter(r => r.rpm).reduce((s, r) => s + r.rpm, 0) / active.filter(r => r.rpm).length) * 10) / 10
-    : 0;
+
+  // Use raw (pre-dedup) rows for efficiency — each shift row has its own counters
+  const avgEfficiency = calcOverallEfficiency(dayData);
 
   return {
     active: active.length,
     idle: idle.length,
     sampling: sampling.length,
-    total: deduped.length, // ← now = unique machines, not rows
+    total: deduped.length,
     totalRolls,
     operators,
-    avgRpm,
+    avgEfficiency,
   };
 }
 
@@ -149,26 +179,17 @@ export function getOperatorStats(data) {
   if (!Array.isArray(data)) return [];
   const grouped = groupByOperator(data);
   return Object.entries(grouped).map(([name, rows]) => {
-    // Sum rolls across all shifts for this operator's machines
     const rolls = rows.reduce((s, r) => s + r.rolls, 0);
-    const machines = [...new Set(rows.map(r => r.machineNumber))]; // unique machines only
-    const rpmRows = rows.filter(r => r.rpm);
-    const avgRpm = rpmRows.length
-      ? Math.round((rpmRows.reduce((s, r) => s + r.rpm, 0) / rpmRows.length) * 10) / 10
+    const machines = [...new Set(rows.map(r => r.machineNumber))];
+    const avgEfficiency = calcOverallEfficiency(rows);
+    const avgRollsPerMachine = machines.length
+      ? Math.round((rolls / machines.length) * 10) / 10
       : 0;
-    // Efficiency: avg of all rows that have both counters
-    const effRows = rows.filter(r => r.exCounter && r.actCounter && r.exCounter > 0);
-    const avgEfficiency = effRows.length
-      ? Math.round((effRows.reduce((s, r) => s + (r.actCounter / r.exCounter) * 100, 0) / effRows.length) * 10) / 10
-      : null;
-    const totalRolls = rolls;
-    const avgRollsPerMachine = machines.length ? Math.round((rolls / machines.length) * 10) / 10 : 0;
     return {
       name,
       rolls,
       machines: machines.length,
       machineList: machines,
-      avgRpm,
       avgEfficiency,
       avgRollsPerMachine,
       days: [...new Set(rows.map(r => r.date))].length,
@@ -176,11 +197,37 @@ export function getOperatorStats(data) {
   }).sort((a, b) => b.rolls - a.rolls);
 }
 
+// Day vs Night shift breakdown — used in Features page
+export function getShiftStats(data) {
+  if (!Array.isArray(data)) return { day: null, night: null };
+
+  const dayRows = data.filter(r => r.shift && r.shift.toLowerCase().includes('day'));
+  const nightRows = data.filter(r => r.shift && r.shift.toLowerCase().includes('night'));
+
+  function shiftSummary(rows) {
+    if (!rows.length) return null;
+    const active = rows.filter(r => r.status === 'active');
+    const totalRolls = rows.reduce((s, r) => s + r.rolls, 0);
+    const uniqueMachines = [...new Set(rows.map(r => r.machineNumber))].length;
+    const efficiency = calcOverallEfficiency(rows); // actCounter / exCounter × 100
+    return {
+      totalRolls,
+      activeMachines: [...new Set(active.map(r => r.machineNumber))].length,
+      totalMachines: uniqueMachines,
+      efficiency,
+    };
+  }
+
+  return {
+    day: shiftSummary(dayRows),
+    night: shiftSummary(nightRows),
+  };
+}
+
 export function getIdleStreaks(data) {
   if (!Array.isArray(data)) return [];
   const byMachine = groupByMachine(data);
   const streaks = [];
-  const today = getTodayStr();
 
   Object.entries(byMachine).forEach(([machineNum, rows]) => {
     const sorted = [...rows].sort((a, b) => {
@@ -204,5 +251,6 @@ export function getIdleStreaks(data) {
       streaks.push({ machine: parseInt(machineNum), streak, lastActive, lastOp });
     }
   });
+
   return streaks.sort((a, b) => b.streak - a.streak);
 }
