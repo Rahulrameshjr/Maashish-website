@@ -2,8 +2,8 @@
 import { useState, useMemo } from 'react';
 import Head from 'next/head';
 import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-CartesianGrid, Legend, Cell, ReferenceLine
+  BarChart, Bar, LineChart, Line, ComposedChart, XAxis, YAxis, Tooltip,
+  ResponsiveContainer, CartesianGrid, Legend, Cell, ReferenceLine
 } from 'recharts';
 import { useSheetData } from '../hooks/useSheetData';
 import { groupByDate, getDailyStats, getOperatorStats, getTodayStr } from '../lib/sheets';
@@ -278,37 +278,76 @@ export default function Dashboard() {
                 <p className="text-xs text-[#5a5a5a] font-mono text-center">+ {opStats.length - 20} more operators</p>
               )}
             </div>
-
-            {/* RPM Distribution */}
+            {/* Daily Production vs Idle Loss */}
             <div className="stat-card space-y-4">
-              <SectionHeader label="Machine Speed Distribution (RPM)" />
-              <div className="grid md:grid-cols-3 gap-4 items-center">
-                <div className="md:col-span-2">
-                  <ResponsiveContainer width="100%" height={180}>
-                    <BarChart data={rpmData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }} barSize={20}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" vertical={false} />
-                      <XAxis dataKey="range" tick={{ fill: '#5a5a5a', fontSize: 10, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fill: '#5a5a5a', fontSize: 11, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
-                      <Tooltip contentStyle={tooltipStyle} />
-                      <Bar dataKey="count" fill="#c9a84c" name="Machines" radius={[3, 3, 0, 0]} opacity={0.8} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="space-y-3">
-                  {[
-                    { label: 'Average RPM', val: avgRpm },
-                    { label: 'Above Avg', val: rangeData.filter(r => r.rpm && r.rpm > parseFloat(avgRpm)).length },
-                    { label: 'Below Avg', val: rangeData.filter(r => r.rpm && r.rpm > 0 && r.rpm < parseFloat(avgRpm)).length },
-                  ].map(s => (
-                    <div key={s.label} className="flex justify-between items-center py-2 border-b border-[#1a1a1a]">
-                      <span className="text-xs text-[#5a5a5a] font-mono">{s.label}</span>
-                      <span className="font-mono text-[#c9a84c] font-medium">{s.val}</span>
+              <SectionHeader label="Daily Production vs Idle Machines" />
+              {(() => {
+                const chartData = [...recentDates].reverse().map(date => {
+                  const rows = byDate[date] || [];
+                  const s = getDailyStats(rows);
+                  const [d, m] = date.split('/');
+                  const idleLoss = s.idle; // machines doing nothing
+                  return {
+                    date: `${d}/${m}`,
+                    Rolls: s.totalRolls,
+                    'Idle Machines': idleLoss,
+                    active: s.active,
+                    total: s.total,
+                  };
+                });
+
+                const totalIdleDays = chartData.reduce((s, r) => s + r['Idle Machines'], 0);
+                const avgIdle = chartData.length ? Math.round(totalIdleDays / chartData.length) : 0;
+                const worstIdleDay = [...chartData].sort((a, b) => b['Idle Machines'] - a['Idle Machines'])[0];
+                const bestDay = [...chartData].sort((a, b) => b.Rolls - a.Rolls)[0];
+
+                return (
+                  <>
+                    {/* Plain English insight strip */}
+                    <div className="grid grid-cols-3 gap-3 mb-2">
+                      <div className="bg-[#111] border border-[#1e1e1e] rounded-lg px-3 py-2.5 text-center">
+                        <p className="font-display text-2xl text-[#3ecf6e]">{bestDay?.Rolls}</p>
+                        <p className="text-[10px] font-mono text-[#5a5a5a] mt-0.5">Best day rolls</p>
+                        <p className="text-[10px] font-mono text-[#3a3a3a]">{bestDay?.date}</p>
+                      </div>
+                      <div className="bg-[#111] border border-[#1e1e1e] rounded-lg px-3 py-2.5 text-center">
+                        <p className="font-display text-2xl text-[#ef4444]">{avgIdle}</p>
+                        <p className="text-[10px] font-mono text-[#5a5a5a] mt-0.5">Avg idle/day</p>
+                        <p className="text-[10px] font-mono text-[#3a3a3a]">machines wasted</p>
+                      </div>
+                      <div className="bg-[#111] border border-[#1e1e1e] rounded-lg px-3 py-2.5 text-center">
+                        <p className="font-display text-2xl text-[#f59e0b]">{worstIdleDay?.['Idle Machines']}</p>
+                        <p className="text-[10px] font-mono text-[#5a5a5a] mt-0.5">Most idle in a day</p>
+                        <p className="text-[10px] font-mono text-[#3a3a3a]">{worstIdleDay?.date}</p>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </div>
+
+                    <ResponsiveContainer width="100%" height={220}>
+                      <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" vertical={false} />
+                        <XAxis dataKey="date" tick={{ fill: '#5a5a5a', fontSize: 11, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
+                        <YAxis yAxisId="rolls" tick={{ fill: '#5a5a5a', fontSize: 11, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
+                        <YAxis yAxisId="idle" orientation="right" tick={{ fill: '#5a5a5a', fontSize: 11, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
+                        <Tooltip
+                          contentStyle={tooltipStyle}
+                          formatter={(val, name) => [
+                            name === 'Rolls' ? `${val} rolls produced` : `${val} machines sitting idle`,
+                            name
+                          ]}
+                        />
+                        <Legend wrapperStyle={{ fontSize: '11px', fontFamily: 'DM Mono', color: '#5a5a5a' }} />
+                        <Bar yAxisId="rolls" dataKey="Rolls" fill="#c9a84c" radius={[3, 3, 0, 0]} barSize={18} opacity={0.9} />
+                        <Line yAxisId="idle" type="monotone" dataKey="Idle Machines" stroke="#ef4444" strokeWidth={2} dot={{ fill: '#ef4444', r: 3 }} activeDot={{ r: 5 }} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+
+                    <p className="text-[10px] font-mono text-[#3a3a3a] text-center">
+                      Gold bars = rolls produced each day · Red line = machines that were idle (not working)
+                    </p>
+                  </>
+                );
+              })()}
             </div>
-            
             {/* Insights */}
             <InsightPanel insights={insights} />
           </>
