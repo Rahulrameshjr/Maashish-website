@@ -1,8 +1,9 @@
 // components/Navbar.js
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { Activity, Menu, X } from 'lucide-react';
+import { Activity, Menu, X, LogOut } from 'lucide-react';
+import { getSession, clearSession } from '../lib/auth';
 
 const navLinks = [
   { label: 'Home', href: '/' },
@@ -12,9 +13,30 @@ const navLinks = [
   { label: 'Features', href: '/Features' },
 ];
 
+{/* User + Logout */}
+{(() => {
+  const session = typeof window !== 'undefined' ? getSession() : null;
+  return session ? (
+    <div className="hidden md:flex items-center gap-3 ml-4 pl-4 border-l border-[#1e1e1e]">
+      <div className="text-right">
+        <p className="text-xs text-[#f0ede8] font-body">{session.name}</p>
+        <p className="text-[10px] text-[#3a3a3a] font-mono capitalize">{session.role}</p>
+      </div>
+      <button
+        onClick={() => { clearSession(); router.push('/login'); }}
+        className="p-1.5 rounded text-[#5a5a5a] hover:text-[#ef4444] hover:bg-[#3a1010] transition-all"
+        title="Sign out"
+      >
+        <LogOut size={14} />
+      </button>
+    </div>
+  ) : null;
+})()}
+
 export default function Navbar() {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [session, setSession] = useState(null);
+  useEffect(() => { setSession(getSession()); }, []);
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-[#1a1a1a] bg-[#0a0a0a]/90 backdrop-blur-md">
@@ -48,6 +70,23 @@ export default function Navbar() {
             );
           })}
         </div>
+        {/* Account button — desktop */}
+        {session && (
+          <Link
+            href="/account"
+            className={`hidden md:flex items-center gap-2 ml-3 pl-3 border-l border-[#1e1e1e] group`}
+          >
+            <div className="w-7 h-7 rounded-lg bg-[#c9a84c]/10 border border-[#c9a84c]/20 flex items-center justify-center group-hover:bg-[#c9a84c]/20 transition-all">
+              <span className="font-display text-sm text-[#c9a84c] leading-none">
+                {session.name?.charAt(0).toUpperCase()}
+              </span>
+            </div>
+            <div className="hidden lg:block text-left">
+              <p className="text-xs text-[#f0ede8] font-body leading-tight">{session.name}</p>
+              <p className="text-[10px] text-[#3a3a3a] font-mono capitalize">{session.role}</p>
+            </div>
+          </Link>
+        )}
 
         {/* Mobile menu button */}
         <button
