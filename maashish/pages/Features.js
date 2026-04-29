@@ -5,7 +5,8 @@ import { useSheetData } from '../hooks/useSheetData';
 import { groupByDate, getDailyStats, getShiftStats, getTodayStr } from '../lib/sheets';
 import LastUpdated from '../components/LastUpdated';
 import { LoadingSpinner, ErrorState } from '../components/Loading';
-import { Sun, Moon, BarChart2, Calendar } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { Sun, Moon, BarChart2, Calendar, Package, TrendingDown } from 'lucide-react';
 
 function ShiftCard({ icon: Icon, label, data, color }) {
   if (!data) return (
@@ -62,7 +63,7 @@ function ShiftCard({ icon: Icon, label, data, color }) {
 }
 
 export default function Features() {
-  const { data, error, isLoading, refresh, mostRecentDate } = useSheetData();
+  const { data, pw, error, isLoading, refresh, mostRecentDate } = useSheetData();
   const [selectedDate, setSelectedDate] = useState(null);
 
   const availableDates = useMemo(() => {
@@ -213,6 +214,184 @@ export default function Features() {
                 </table>
               </div>
             </div>
+
+            {/* P&W — Packing & Wastage Insights */}
+            {pw.length > 0 && (() => {
+              const validRows = pw.filter(r => r.totalRolls > 0);
+              const totalUnit1 = pw.reduce((s, r) => s + (r.unit1Rolls || 0), 0);
+              const totalUnit2 = pw.reduce((s, r) => s + (r.unit2Rolls || 0), 0);
+              const totalRolls = totalUnit1 + totalUnit2;
+              const totalWastage = pw.reduce((s, r) => s + (r.totalWastage || 0), 0);
+              const totalUnit1Wastage = pw.reduce((s, r) => s + (r.unit1Wastage || 0), 0);
+              const totalUnit2Wastage = pw.reduce((s, r) => s + (r.unit2Wastage || 0), 0);
+              const avgDailyRolls = validRows.length ? Math.round(totalRolls / validRows.length) : 0;
+              const avgDailyWastage = validRows.length ? (totalWastage / validRows.length).toFixed(1) : 0;
+              const highWastageUnit = totalUnit1Wastage > totalUnit2Wastage ? 'Unit 1' : 'Unit 2';
+              const highWastageAmt = Math.max(totalUnit1Wastage, totalUnit2Wastage).toFixed(1);
+              const bestDay = [...validRows].sort((a, b) => b.totalRolls - a.totalRolls)[0];
+              const worstDay = [...validRows].sort((a, b) => a.totalRolls - b.totalRolls)[0];
+              const highWastageDay = [...pw.filter(r => r.totalWastage > 0)].sort((a, b) => b.totalWastage - a.totalWastage)[0];
+              const wastageRatio = totalRolls > 0 ? ((totalWastage / totalRolls) * 100).toFixed(1) : 0;
+              const unit1Pct = totalRolls > 0 ? Math.round((totalUnit1 / totalRolls) * 100) : 0;
+              const unit2Pct = 100 - unit1Pct;
+
+              // Last 7 days for chart
+              const chartData = validRows.slice(-7).map(r => ({
+                date: r.date.slice(0, 5),
+                'Unit 1': r.unit1Rolls || 0,
+                'Unit 2': r.unit2Rolls || 0,
+                'Wastage': parseFloat((r.totalWastage || 0).toFixed(1)),
+              }));
+
+              return (
+                <div className="space-y-4">
+                  {/* Section header */}
+                  <div className="flex items-center gap-2">
+                    <Package size={14} className="text-[#c9a84c]" />
+                    <p className="text-xs font-mono uppercase tracking-widest text-[#5a5a5a]">Packing & Wastage Overview</p>
+                    <span className="text-[10px] font-mono text-[#3a3a3a]">· {validRows.length} days of data</span>
+                  </div>
+
+                  {/* KPI cards row */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="stat-card space-y-1">
+                      <p className="text-[10px] font-mono uppercase tracking-widest text-[#5a5a5a]">Total Packed</p>
+                      <p className="font-display text-4xl text-[#c9a84c]">{totalRolls.toLocaleString()}</p>
+                      <p className="text-[10px] text-[#3a3a3a] font-mono">rolls across all days</p>
+                    </div>
+                    <div className="stat-card space-y-1">
+                      <p className="text-[10px] font-mono uppercase tracking-widest text-[#5a5a5a]">Avg Per Day</p>
+                      <p className="font-display text-4xl text-[#f0ede8]">{avgDailyRolls}</p>
+                      <p className="text-[10px] text-[#3a3a3a] font-mono">rolls per working day</p>
+                    </div>
+                    <div className="stat-card space-y-1">
+                      <p className="text-[10px] font-mono uppercase tracking-widest text-[#5a5a5a]">Total Wastage</p>
+                      <p className="font-display text-4xl text-[#ef4444]">{totalWastage.toFixed(1)}</p>
+                      <p className="text-[10px] text-[#3a3a3a] font-mono">kg wasted overall</p>
+                    </div>
+                    <div className="stat-card space-y-1">
+                      <p className="text-[10px] font-mono uppercase tracking-widest text-[#5a5a5a]">Wastage Rate</p>
+                      <p className={`font-display text-4xl ${parseFloat(wastageRatio) > 10 ? 'text-[#ef4444]' : 'text-[#f59e0b]'}`}>{wastageRatio}%</p>
+                      <p className="text-[10px] text-[#3a3a3a] font-mono">wastage per roll packed</p>
+                    </div>
+                  </div>
+
+                  {/* Unit comparison + alerts */}
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {/* Unit split */}
+                    <div className="stat-card space-y-4">
+                      <p className="text-[10px] font-mono uppercase tracking-widest text-[#5a5a5a]">Unit Contribution</p>
+                      
+                      <div className="space-y-3">
+                        <div>
+                          <div className="flex justify-between text-xs font-mono mb-1">
+                            <span className="text-[#c9a84c]">Unit 1</span>
+                            <span className="text-[#f0ede8]">{totalUnit1.toLocaleString()} rolls · {unit1Pct}%</span>
+                          </div>
+                          <div className="h-3 bg-[#1e1e1e] rounded-full overflow-hidden">
+                            <div className="h-full bg-[#c9a84c] rounded-full" style={{ width: `${unit1Pct}%` }} />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-xs font-mono mb-1">
+                            <span className="text-[#3ecf6e]">Unit 2</span>
+                            <span className="text-[#f0ede8]">{totalUnit2.toLocaleString()} rolls · {unit2Pct}%</span>
+                          </div>
+                          <div className="h-3 bg-[#1e1e1e] rounded-full overflow-hidden">
+                            <div className="h-full bg-[#3ecf6e] rounded-full" style={{ width: `${unit2Pct}%` }} />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-[#1e1e1e] pt-3 space-y-2">
+                        <p className="text-[10px] font-mono uppercase tracking-widest text-[#5a5a5a]">Wastage by Unit</p>
+                        <div className="flex justify-between text-xs font-mono">
+                          <span className="text-[#888888]">Unit 1 Wastage</span>
+                          <span className={totalUnit1Wastage > totalUnit2Wastage ? 'text-[#ef4444]' : 'text-[#888888]'}>
+                            {totalUnit1Wastage.toFixed(1)} kg
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-xs font-mono">
+                          <span className="text-[#888888]">Unit 2 Wastage</span>
+                          <span className={totalUnit2Wastage > totalUnit1Wastage ? 'text-[#ef4444]' : 'text-[#888888]'}>
+                            {totalUnit2Wastage.toFixed(1)} kg
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-xs font-mono border-t border-[#1a1a1a] pt-2">
+                          <span className="text-[#ef4444]">⚠ Higher wastage</span>
+                          <span className="text-[#ef4444] font-medium">{highWastageUnit} · {highWastageAmt} kg</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Key insights */}
+                    <div className="stat-card space-y-3">
+                      <p className="text-[10px] font-mono uppercase tracking-widest text-[#5a5a5a]">Key Insights</p>
+                      
+                      {[
+                        {
+                          label: 'Best Production Day',
+                          value: bestDay?.date?.slice(0,5),
+                          detail: `${bestDay?.totalRolls} rolls packed`,
+                          color: '#3ecf6e',
+                          icon: '↑',
+                        },
+                        {
+                          label: 'Lowest Production Day',
+                          value: worstDay?.date?.slice(0,5),
+                          detail: `${worstDay?.totalRolls} rolls packed`,
+                          color: '#ef4444',
+                          icon: '↓',
+                        },
+                        {
+                          label: 'Highest Wastage Day',
+                          value: highWastageDay?.date?.slice(0,5),
+                          detail: `${highWastageDay?.totalWastage?.toFixed(1)} kg wasted`,
+                          color: '#f59e0b',
+                          icon: '⚠',
+                        },
+                        {
+                          label: 'Avg Daily Wastage',
+                          value: `${avgDailyWastage} kg`,
+                          detail: 'per working day',
+                          color: '#888888',
+                          icon: '~',
+                        },
+                      ].map(ins => (
+                        <div key={ins.label} className="flex items-start gap-3 py-2 border-b border-[#141414] last:border-0">
+                          <span className="font-mono text-sm mt-0.5" style={{ color: ins.color }}>{ins.icon}</span>
+                          <div className="flex-1">
+                            <p className="text-[10px] text-[#5a5a5a] font-mono uppercase tracking-wide">{ins.label}</p>
+                            <p className="font-mono text-sm font-medium" style={{ color: ins.color }}>{ins.value}</p>
+                            <p className="text-[10px] text-[#3a3a3a] font-mono">{ins.detail}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Chart — last 7 days */}
+                  <div className="stat-card space-y-4">
+                    <p className="text-[10px] font-mono uppercase tracking-widest text-[#5a5a5a]">Daily Packing — Last 7 Days</p>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <BarChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }} barSize={12} barGap={3}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" vertical={false} />
+                        <XAxis dataKey="date" tick={{ fill: '#5a5a5a', fontSize: 11, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fill: '#5a5a5a', fontSize: 11, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#161616', border: '1px solid #2a2a2a', borderRadius: '8px', color: '#f0ede8', fontSize: '12px', fontFamily: 'DM Mono' }}
+                        />
+                        <Legend wrapperStyle={{ fontSize: '11px', fontFamily: 'DM Mono', color: '#5a5a5a' }} />
+                        <Bar dataKey="Unit 1" fill="#c9a84c" radius={[2, 2, 0, 0]} />
+                        <Bar dataKey="Unit 2" fill="#3ecf6e" radius={[2, 2, 0, 0]} />
+                        <Bar dataKey="Wastage" fill="#ef4444" radius={[2, 2, 0, 0]} opacity={0.7} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                    <p className="text-[10px] text-[#3a3a3a] font-mono text-center">Red bars = wastage in kg · Gold = Unit 1 rolls · Green = Unit 2 rolls</p>
+                  </div>
+                </div>
+              );
+            })()}
           </>
         )}
       </main>

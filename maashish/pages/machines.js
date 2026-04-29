@@ -7,7 +7,8 @@ import StatusBadge from '../components/StatusBadge';
 import LastUpdated from '../components/LastUpdated';
 import InsightPanel from '../components/InsightPanel';
 import { LoadingSpinner, ErrorState } from '../components/Loading';
-import { Search, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
+import { Search, ChevronUp, ChevronDown, ChevronsUpDown, AlertTriangle } from 'lucide-react';
 
 const PAGE_SIZE = 30;
 
@@ -32,7 +33,7 @@ function inputDateToSheet(inputDate) {
 }
 
 export default function Machines() {
-  const { data, error, isLoading, refresh, mostRecentDate } = useSheetData();
+  const { data, idleReasons, error, isLoading, refresh, mostRecentDate } = useSheetData();
 
   const [filterDate, setFilterDate] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -266,6 +267,187 @@ export default function Machines() {
                 </div>
               )}
             </div>
+
+            {/* ── Machine Idle Reason Intelligence ── */}
+            {idleReasons.length > 0 && (() => {
+              // Aggregate by reason across all data
+              const reasonMap = {};
+              idleReasons.forEach(row => {
+                const r = row.reason;
+                if (!reasonMap[r]) reasonMap[r] = { reason: r, machines: new Set(), occurrences: 0, dates: new Set() };
+                row.machines.forEach(m => reasonMap[r].machines.add(m));
+                reasonMap[r].occurrences += 1;
+                reasonMap[r].dates.add(row.date);
+              });
+
+              const reasonStats = Object.values(reasonMap).map(r => ({
+                reason: r.reason,
+                uniqueMachines: r.machines.size,
+                machineList: [...r.machines].sort((a,b) => a-b),
+                occurrences: r.occurrences,
+                days: r.dates.size,
+              })).sort((a, b) => b.uniqueMachines - a.uniqueMachines);
+
+              const totalAffected = new Set(idleReasons.flatMap(r => r.machines)).size;
+              const mostCommon = reasonStats[0];
+              const totalOccurrences = reasonStats.reduce((s, r) => s + r.occurrences, 0);
+
+              // Most frequently idle machines
+              const machineFreq = {};
+              idleReasons.forEach(row => {
+                row.machines.forEach(m => {
+                  machineFreq[m] = (machineFreq[m] || 0) + 1;
+                });
+              });
+              const topIdleMachines = Object.entries(machineFreq)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 8)
+                .map(([m, count]) => ({ machine: parseInt(m), count }));
+
+              // Pie chart colors per reason
+              const reasonColors = {
+                'yarn shortage': '#ef4444',
+                'service': '#f59e0b',
+                'order complete': '#3ecf6e',
+                'sampling': '#60a5fa',
+                'dc': '#a78bfa',
+                'problem stop': '#fb7185',
+              };
+              const pieData = reasonStats.map(r => ({
+                name: r.reason,
+                value: r.uniqueMachines,
+                color: reasonColors[r.reason] || '#888888',
+              }));
+
+              // Urgency label
+              const urgencyMap = {
+                'yarn shortage': { label: 'Fix Immediately', color: '#ef4444', tip: 'Restock yarn — machines are waiting' },
+                'service': { label: 'Schedule Maintenance', color: '#f59e0b', tip: 'Book technician for these machines' },
+                'problem stop': { label: 'Urgent Repair Needed', color: '#ef4444', tip: 'Machine stopped due to fault — inspect now' },
+                'dc': { label: 'Awaiting Design Change', color: '#a78bfa', tip: 'DC in progress — plan next order' },
+                'order complete': { label: 'Reassign Machine', color: '#3ecf6e', tip: 'Order done — assign new work' },
+                'sampling': { label: 'In Sampling Mode', color: '#60a5fa', tip: 'Testing new design — monitor output' },
+              };
+
+              return (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle size={13} className="text-[#f59e0b]" />
+                    <p className="text-xs font-mono uppercase tracking-widest text-[#5a5a5a]">Machine Idle Analysis</p>
+                    <span className="text-[10px] font-mono text-[#3a3a3a]">· {totalAffected} unique machines affected</span>
+                  </div>
+
+                  {/* Top KPI strip */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="stat-card text-center py-3">
+                      <p className="font-display text-3xl text-[#ef4444]">{totalAffected}</p>
+                      <p className="text-[10px] font-mono text-[#5a5a5a] mt-1 uppercase">Total Affected<br/>Machines</p>
+                    </div>
+                    <div className="stat-card text-center py-3">
+                      <p className="font-display text-3xl text-[#f59e0b]">{reasonStats.length}</p>
+                      <p className="text-[10px] font-mono text-[#5a5a5a] mt-1 uppercase">Idle<br/>Reasons</p>
+                    </div>
+                    <div className="stat-card text-center py-3">
+                      <p className="font-display text-3xl text-[#c9a84c]">{totalOccurrences}</p>
+                      <p className="text-[10px] font-mono text-[#5a5a5a] mt-1 uppercase">Total Idle<br/>Events</p>
+                    </div>
+                    <div className="stat-card text-center py-3">
+                      <p className="font-display text-3xl text-[#f0ede8] capitalize">{mostCommon?.uniqueMachines}</p>
+                      <p className="text-[10px] font-mono text-[#5a5a5a] mt-1 uppercase">Machines from<br/>Top Reason</p>
+                    </div>
+                  </div>
+
+                  {/* Main content: Pie + Reason breakdown */}
+                  <div className="grid md:grid-cols-2 gap-4">
+
+                    {/* Left: Pie chart + legend */}
+                    <div className="stat-card space-y-3">
+                      <p className="text-[10px] font-mono uppercase tracking-widest text-[#5a5a5a]">Why Are Machines Idle?</p>
+                      <div className="flex items-center gap-4">
+                        <ResponsiveContainer width={140} height={140}>
+                          <PieChart>
+                            <Pie
+                              data={pieData}
+                              cx="50%" cy="50%"
+                              innerRadius={38} outerRadius={60}
+                              paddingAngle={3}
+                              dataKey="value"
+                            >
+                              {pieData.map((entry, i) => (
+                                <Cell key={i} fill={entry.color} strokeWidth={0} />
+                              ))}
+                            </Pie>
+                            <Tooltip
+                              contentStyle={{ backgroundColor: '#161616', border: '1px solid #2a2a2a', borderRadius: '8px', fontSize: '11px', fontFamily: 'DM Mono', color: '#f0ede8' }}
+                              formatter={(val, name) => [`${val} machines`, name]}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                        <div className="flex-1 space-y-2">
+                          {pieData.map(entry => (
+                            <div key={entry.name} className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: entry.color }} />
+                                <span className="text-xs font-body capitalize text-[#888888]">{entry.name}</span>
+                              </div>
+                              <span className="font-mono text-xs font-medium" style={{ color: entry.color }}>{entry.value}m</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right: Action cards per reason */}
+                    <div className="stat-card space-y-2">
+                      <p className="text-[10px] font-mono uppercase tracking-widest text-[#5a5a5a]">What Action Is Needed?</p>
+                      <div className="space-y-2">
+                        {reasonStats.map(r => {
+                          const urgency = urgencyMap[r.reason] || { label: 'Review', color: '#888888', tip: 'Check status' };
+                          return (
+                            <div key={r.reason} className="flex items-start gap-3 p-2 rounded-lg bg-[#111] border border-[#1e1e1e]">
+                              <div className="w-1 self-stretch rounded-full shrink-0" style={{ backgroundColor: urgency.color }} />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-xs font-body capitalize text-[#f0ede8]">{r.reason}</p>
+                                  <span className="text-[10px] font-mono shrink-0" style={{ color: urgency.color }}>{r.uniqueMachines} machines</span>
+                                </div>
+                                <p className="text-[10px] text-[#5a5a5a] font-mono mt-0.5">{urgency.tip}</p>
+                                <p className="text-[10px] font-mono mt-0.5" style={{ color: urgency.color }}>{urgency.label}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Most frequently idle machines */}
+                  <div className="stat-card space-y-3">
+                    <p className="text-[10px] font-mono uppercase tracking-widest text-[#5a5a5a]">
+                      Machines That Go Idle Most Often — Needs Attention
+                    </p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      {topIdleMachines.map(({ machine, count }) => (
+                        <div key={machine} className="flex items-center justify-between px-3 py-2 rounded-lg bg-[#111] border border-[#1e1e1e]">
+                          <div>
+                            <p className="font-mono text-sm text-[#c9a84c] font-medium">#{machine}</p>
+                            <p className="text-[10px] text-[#5a5a5a] font-mono">idled {count}x</p>
+                          </div>
+                          <div className="flex flex-col gap-0.5">
+                            {[...Array(Math.min(count, 5))].map((_, i) => (
+                              <div key={i} className="w-1.5 h-1.5 rounded-full bg-[#ef4444] opacity-80" />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[10px] font-mono text-[#3a3a3a]">
+                      These machines are repeatedly going idle — check if they need permanent maintenance or operator reassignment.
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Operator cards */}
             {opStats.length > 0 && (

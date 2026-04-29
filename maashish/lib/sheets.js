@@ -254,3 +254,40 @@ export function getIdleStreaks(data) {
 
   return streaks.sort((a, b) => b.streak - a.streak);
 }
+
+export function parseIdleReasons(rows) {
+  if (!Array.isArray(rows) || rows.length < 2) return [];
+  return rows.slice(1).map(row => {
+    const date = (row[0] || '').trim();
+    const machineRaw = (row[1] || '').toString().trim();
+    const reason = (row[2] || '').trim().toLowerCase();
+    const totalIdle = row[3] ? parseInt(row[3]) : null;
+    const machines = machineRaw
+      .split(',')
+      .map(m => parseInt(m.trim()))
+      .filter(m => !isNaN(m) && m > 0);
+    if (!machines.length || !reason || !date) return null;
+    return { date, machines, machineCount: machines.length, reason, totalIdle };
+  }).filter(Boolean);
+}
+
+export function parsePW(rows) {
+  if (!Array.isArray(rows) || rows.length < 2) return [];
+  return rows.slice(1).map(row => {
+    const date = (row[0] || '').trim();
+    const unit1Rolls = row[1] && row[1].toString().toUpperCase() !== 'NA' ? parseFloat(row[1]) : null;
+    const unit1Wastage = row[2] && row[2].toString().toUpperCase() !== 'NA' ? parseFloat(row[2]) : null;
+    const unit2Rolls = row[3] && row[3].toString().toUpperCase() !== 'NA' ? parseFloat(row[3]) : null;
+    const unit2Wastage = row[4] && row[4].toString().toUpperCase() !== 'NA' ? parseFloat(row[4]) : null;
+    const rejectedRaw = (row[5] || '').trim();
+    if (!date) return null;
+    return {
+      date,
+      unit1Rolls, unit1Wastage,
+      unit2Rolls, unit2Wastage,
+      totalRolls: (unit1Rolls || 0) + (unit2Rolls || 0),
+      totalWastage: (unit1Wastage || 0) + (unit2Wastage || 0),
+      rejectedRaw,
+    };
+  }).filter(Boolean);
+}

@@ -11,7 +11,7 @@ import StatCard from '../components/StatCard';
 import InsightPanel from '../components/InsightPanel';
 import LastUpdated from '../components/LastUpdated';
 import { LoadingSpinner, ErrorState } from '../components/Loading';
-import { Activity, Layers, Cpu, User } from 'lucide-react';
+import { Activity, Layers, Cpu, User,  AlertCircle } from 'lucide-react';
 
 const CHART_COLORS = ['#c9a84c', '#3ecf6e', '#60a5fa', '#f59e0b', '#a78bfa', '#fb7185', '#34d399', '#f97316'];
 
@@ -29,7 +29,7 @@ function SectionHeader({ label }) {
 }
 
 export default function Dashboard() {
-  const { data, error, isLoading, refresh } = useSheetData();
+  const { data, pw, error, isLoading, refresh } = useSheetData();
   const [days, setDays] = useState(7);
 
   const today = getTodayStr();
@@ -64,9 +64,20 @@ export default function Dashboard() {
 
   // KPIs
   const totalRolls = rangeData.reduce((s, r) => s + r.rolls, 0);
-  const avgActiveMachines = recentDates.length
-    ? Math.round(recentDates.reduce((s, d) => s + getDailyStats(byDate[d] || []).active, 0) / recentDates.length)
-    : 0;
+  // Total rejected rolls from P&W sheet
+  const totalRejected = pw.reduce((s, r) => {
+    if (!r.rejectedRaw) return s;
+    const match = r.rejectedRaw.match(/^(\d+)/);
+    return s + (match ? parseInt(match[1]) : 0);
+  }, 0);
+
+  const rejectedThisPeriod = pw
+    .filter(r => recentDates.includes(r.date))
+    .reduce((s, r) => {
+      if (!r.rejectedRaw) return s;
+      const match = r.rejectedRaw.match(/^(\d+)/);
+      return s + (match ? parseInt(match[1]) : 0);
+    }, 0);
   const totalMachines = [...new Set(data.map(r => r.machineNumber))].length;
   const avgUtilisation = recentDates.length
     ? Math.round(recentDates.reduce((s, d) => {
@@ -155,7 +166,12 @@ export default function Dashboard() {
             {/* KPIs */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <StatCard label="Total Rolls" value={totalRolls} sub={`Last ${days} days`} icon={Layers} accent />
-              <StatCard label="Avg Active Machines" value={avgActiveMachines} sub="machines per day" icon={Cpu} />
+              <StatCard
+                label="Rolls Rejected"
+                value={rejectedThisPeriod}
+                sub={`last ${days} days · ${totalRejected} total overall`}
+                icon={AlertCircle}
+              />
               <StatCard label="Floor Utilisation" value={`${avgUtilisation}%`} sub="active machine rate" icon={Activity} />
               <StatCard label="Top Operator" value={topOp?.name?.split(' ')[0] || '—'} sub={topOp ? `${topOp.rolls} rolls this period` : 'No data'} icon={User} />
             </div>
