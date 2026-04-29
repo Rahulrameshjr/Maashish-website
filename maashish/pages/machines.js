@@ -337,26 +337,6 @@ export default function Machines() {
                     <span className="text-[10px] font-mono text-[#3a3a3a]">· {totalAffected} unique machines affected</span>
                   </div>
 
-                  {/* Top KPI strip */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div className="stat-card text-center py-3">
-                      <p className="font-display text-3xl text-[#ef4444]">{totalAffected}</p>
-                      <p className="text-[10px] font-mono text-[#5a5a5a] mt-1 uppercase">Total Affected<br/>Machines</p>
-                    </div>
-                    <div className="stat-card text-center py-3">
-                      <p className="font-display text-3xl text-[#f59e0b]">{reasonStats.length}</p>
-                      <p className="text-[10px] font-mono text-[#5a5a5a] mt-1 uppercase">Idle<br/>Reasons</p>
-                    </div>
-                    <div className="stat-card text-center py-3">
-                      <p className="font-display text-3xl text-[#c9a84c]">{totalOccurrences}</p>
-                      <p className="text-[10px] font-mono text-[#5a5a5a] mt-1 uppercase">Total Idle<br/>Events</p>
-                    </div>
-                    <div className="stat-card text-center py-3">
-                      <p className="font-display text-3xl text-[#f0ede8] capitalize">{mostCommon?.uniqueMachines}</p>
-                      <p className="text-[10px] font-mono text-[#5a5a5a] mt-1 uppercase">Machines from<br/>Top Reason</p>
-                    </div>
-                  </div>
-
                   {/* Main content: Pie + Reason breakdown */}
                   <div className="grid md:grid-cols-2 gap-4">
 

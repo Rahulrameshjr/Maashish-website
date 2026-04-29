@@ -55,7 +55,6 @@ function ShiftCard({ icon: Icon, label, data, color }) {
               style={{ width: `${Math.min(100, data.efficiency)}%`, backgroundColor: effColor }}
             />
           </div>
-          <p className="text-[10px] font-mono text-[#3a3a3a] mt-1">act. counter ÷ (RPM × 43200)</p>
         </div>
       )}
     </div>

@@ -308,6 +308,7 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
+            
             {/* Insights */}
             <InsightPanel insights={insights} />
           </>
