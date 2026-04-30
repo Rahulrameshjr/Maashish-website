@@ -2,12 +2,14 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useSheetData, getMostRecentDate } from '../hooks/useSheetData';
-import { filterByDate, getDailyStats, getTodayStr, groupByOperator } from '../lib/sheets';
+import { filterByDate, getDailyStats, getTodayStr, groupByOperator, groupByDate } from '../lib/sheets';
 import StatCard from '../components/StatCard';
 import LastUpdated from '../components/LastUpdated';
 import StatusBadge from '../components/StatusBadge';
 import { LoadingSpinner, ErrorState, StatCardSkeleton } from '../components/Loading';
 import { Activity, Layers, Users, AlertCircle, ArrowRight, Cpu } from 'lucide-react';
+import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+
 
 export default function Home() {
   const { data, error, isLoading, refresh, mostRecentDate } = useSheetData();
@@ -31,6 +33,18 @@ export default function Home() {
   const totalMachines = todayData.length || 0;
   const idleRate = totalMachines ? Math.round((stats.idle / totalMachines) * 100) : 0;
   const efficiencyDisplay = stats.avgEfficiency != null ? stats.avgEfficiency : null;
+
+  // Chart data — last 7 days
+  const allDates = [...new Set(data.map(r => r.date).filter(Boolean))].sort((a, b) => {
+    const [ad,am,ay] = a.split('/'); const [bd,bm,by] = b.split('/');
+    return new Date(`${by}-${bm}-${bd}`) - new Date(`${ay}-${am}-${ad}`);
+  });
+  const byDate = groupByDate(data);
+  const chartData = allDates.slice(0, 7).reverse().map(date => {
+    const s = getDailyStats(byDate[date] || []);
+    const [d, m] = date.split('/');
+    return { date: `${d}/${m}`, Rolls: s.totalRolls, 'Idle Machines': s.idle };
+  });
 
   // Format display date nicely
   const formattedDate = displayDate
@@ -189,6 +203,35 @@ export default function Home() {
           {!isLoading && !error && totalMachines === 0 && data.length > 0 && (
             <div className="stat-card text-center py-8">
               <p className="text-[#5a5a5a] text-sm font-mono">No data for {displayDate}. Showing most recent available date.</p>
+            </div>
+          )}
+          {/* Production vs Idle chart */}
+          {!isLoading && !error && chartData.length > 0 && (
+            <div className="stat-card space-y-3">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs font-mono uppercase tracking-widest text-[#5a5a5a]">Daily Production vs Idle Machines</p>
+                  <p className="text-[10px] font-mono text-[#3a3a3a] mt-0.5">Gold = rolls made · Red line = machines sitting idle</p>
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height={200}>
+                <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" vertical={false} />
+                  <XAxis dataKey="date" tick={{ fill: '#5a5a5a', fontSize: 11, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
+                  <YAxis yAxisId="rolls" tick={{ fill: '#5a5a5a', fontSize: 10, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
+                  <YAxis yAxisId="idle" orientation="right" tick={{ fill: '#5a5a5a', fontSize: 10, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#161616', border: '1px solid #2a2a2a', borderRadius: '8px', color: '#f0ede8', fontSize: '12px', fontFamily: 'DM Mono' }}
+                    formatter={(val, name) => [
+                      name === 'Rolls' ? `${val} rolls produced` : `${val} machines idle`,
+                      name
+                    ]}
+                  />
+                  <Legend wrapperStyle={{ fontSize: '11px', fontFamily: 'DM Mono', color: '#5a5a5a' }} />
+                  <Bar yAxisId="rolls" dataKey="Rolls" fill="#c9a84c" radius={[3, 3, 0, 0]} barSize={22} opacity={0.9} />
+                  <Line yAxisId="idle" type="monotone" dataKey="Idle Machines" stroke="#ef4444" strokeWidth={2} dot={{ fill: '#ef4444', r: 3 }} activeDot={{ r: 5 }} />
+                </ComposedChart>
+              </ResponsiveContainer>
             </div>
           )}
 

@@ -83,7 +83,6 @@ export default function Tools() {
       `Active Machines: ${stats.active} / ${stats.total}`,
       `Idle Machines: ${stats.idle} (${idlePct}%)`,
       `Operators on Floor: ${stats.operators.length}`,
-      `Avg RPM: ${stats.avgRpm}`,
       ``,
       `Top Operator: ${top?.name || '—'} (${top?.rolls || 0} rolls)`,
       ``,

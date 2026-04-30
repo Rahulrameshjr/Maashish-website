@@ -179,17 +179,35 @@ export function getOperatorStats(data) {
   if (!Array.isArray(data)) return [];
   const grouped = groupByOperator(data);
   return Object.entries(grouped).map(([name, rows]) => {
+
+    // Unique machines for this operator in this dataset (single day if dateFiltered passed)
+    const uniqueMachines = [...new Set(rows.map(r => r.machineNumber))];
+
+    // Total rolls — sum all rows for this operator
     const rolls = rows.reduce((s, r) => s + r.rolls, 0);
-    const machines = [...new Set(rows.map(r => r.machineNumber))];
-    const avgEfficiency = calcOverallEfficiency(rows);
-    const avgRollsPerMachine = machines.length
-      ? Math.round((rolls / machines.length) * 10) / 10
+
+    // Rolls per machine
+    const avgRollsPerMachine = uniqueMachines.length
+      ? Math.round((rolls / uniqueMachines.length) * 10) / 10
       : 0;
+
+    // Efficiency — only rows that have BOTH actCounter and exCounter filled
+    // actCounter / exCounter × 100 per row, then average
+    const effRows = rows.filter(r =>
+      r.actCounter && r.actCounter > 0 &&
+      r.exCounter && r.exCounter > 0
+    );
+    const avgEfficiency = effRows.length
+      ? Math.round(
+          (effRows.reduce((s, r) => s + (r.actCounter / r.exCounter) * 100, 0) / effRows.length)
+          * 10) / 10
+      : null;
+
     return {
       name,
       rolls,
-      machines: machines.length,
-      machineList: machines,
+      machines: uniqueMachines.length,
+      machineList: uniqueMachines,
       avgEfficiency,
       avgRollsPerMachine,
       days: [...new Set(rows.map(r => r.date))].length,

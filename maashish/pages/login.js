@@ -34,7 +34,7 @@ export default function Login() {
 
   return (
     <>
-      <Head><title>Login — MA Aashish</title></Head>
+      <Head><title>Login — MAA Ashish</title></Head>
       <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center px-4">
         {/* Background glow */}
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_#c9a84c06,_transparent_70%)] pointer-events-none" />
