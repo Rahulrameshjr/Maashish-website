@@ -93,14 +93,22 @@ export default function Dashboard() {
 
   // RPM distribution
   const rpmData = useMemo(() => {
-    const active = rangeData.filter(r => r.rpm && r.rpm > 0);
+    // Only unique machines — take the latest RPM per machine number
+    const latestByMachine = {};
+    rangeData.filter(r => r.rpm && r.rpm > 0).forEach(r => {
+      latestByMachine[r.machineNumber] = r.rpm;
+    });
+  
     const buckets = {};
-    active.forEach(r => {
-      const b = Math.floor(r.rpm / 2) * 2;
+    Object.values(latestByMachine).forEach(rpm => {
+      const b = Math.floor(rpm / 2) * 2;
       const key = `${b}–${b + 2}`;
       buckets[key] = (buckets[key] || 0) + 1;
     });
-    return Object.entries(buckets).map(([range, count]) => ({ range, count })).sort((a, b) => parseInt(a.range) - parseInt(b.range));
+  
+    return Object.entries(buckets)
+      .map(([range, count]) => ({ range, count }))
+      .sort((a, b) => parseInt(a.range) - parseInt(b.range));
   }, [rangeData]);
 
   const avgRpm = useMemo(() => {

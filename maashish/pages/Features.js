@@ -316,10 +316,6 @@ export default function Features() {
                             {totalUnit2Wastage.toFixed(1)} kg
                           </span>
                         </div>
-                        <div className="flex justify-between text-xs font-mono border-t border-[#1a1a1a] pt-2">
-                          <span className="text-[#ef4444]">⚠ Higher wastage</span>
-                          <span className="text-[#ef4444] font-medium">{highWastageUnit} · {highWastageAmt} kg</span>
-                        </div>
                       </div>
                     </div>
 

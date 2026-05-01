@@ -36,6 +36,10 @@ function csvDownload(filename, rows, headers) {
 export default function Tools() {
   const { data, error, isLoading, refresh } = useSheetData();
   const [copied, setCopied] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
   const [reportDate, setReportDate] = useState(() => {
     const [d, m, y] = getTodayStr().split('/');
     return `${y}-${m}-${d}`;
@@ -49,15 +53,13 @@ export default function Tools() {
 
   // Operator monthly summary (current month data)
   const opMonthly = useMemo(() => {
-    const now = new Date();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const year = now.getFullYear();
+    const [year, month] = selectedMonth.split('-');
     const monthData = data.filter(r => {
       const [, m, y] = r.date.split('/');
-      return m === month && y === String(year);
+      return m === month && y === year;
     });
     return getOperatorStats(monthData);
-  }, [data]);
+  }, [data, selectedMonth]);
 
   // Daily report generator
   const reportData = useMemo(() => {
@@ -168,8 +170,20 @@ export default function Tools() {
             <ToolCard
               icon={Users}
               title="Operator Monthly Summary"
-              description="This month's attendance, rolls, and performance per operator"
+              description="Attendance, rolls, and performance per operator by month"
             >
+              {/* Month picker */}
+              <div className="flex items-center gap-2 mb-4">
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={e => setSelectedMonth(e.target.value)}
+                  className="px-3 py-1.5 bg-[#111] border border-[#222] rounded text-sm text-[#f0ede8] font-mono focus:outline-none focus:border-[#c9a84c]/50"
+                />
+                <span className="text-xs font-mono text-[#5a5a5a]">
+                  {opMonthly.length > 0 ? `${opMonthly.length} operators found` : 'No data for this month'}
+                </span>
+              </div>
               {opMonthly.length === 0 ? (
                 <p className="text-sm text-[#5a5a5a] font-mono">No data for this month yet.</p>
               ) : (

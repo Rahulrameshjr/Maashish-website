@@ -248,23 +248,44 @@ export function getIdleStreaks(data) {
   const streaks = [];
 
   Object.entries(byMachine).forEach(([machineNum, rows]) => {
-    const sorted = [...rows].sort((a, b) => {
-      const [ad, am, ay] = a.date.split('/');
-      const [bd, bm, by] = b.date.split('/');
+    // Deduplicate by date first — one entry per calendar day per machine
+    // If either shift is active that day, machine is considered active that day
+    const byDateMap = {};
+    rows.forEach(r => {
+      if (!byDateMap[r.date]) {
+        byDateMap[r.date] = r.status;
+      } else {
+        // If any shift was active, the day counts as active
+        if (r.status === 'active') byDateMap[r.date] = 'active';
+      }
+    });
+
+    // Sort dates oldest to newest
+    const sortedDates = Object.keys(byDateMap).sort((a, b) => {
+      const [ad, am, ay] = a.split('/');
+      const [bd, bm, by] = b.split('/');
       return new Date(`${ay}-${am}-${ad}`) - new Date(`${by}-${bm}-${bd}`);
     });
+
+    // Count consecutive idle days from the most recent date backwards
     let streak = 0;
     let lastActive = null;
     let lastOp = '';
-    for (let i = sorted.length - 1; i >= 0; i--) {
-      if (sorted[i].status === 'idle' || sorted[i].status === 'sampling') {
+
+    for (let i = sortedDates.length - 1; i >= 0; i--) {
+      const date = sortedDates[i];
+      const status = byDateMap[date];
+      if (status === 'idle' || status === 'sampling') {
         streak++;
       } else {
-        lastActive = sorted[i].date;
-        lastOp = sorted[i].operatorName;
+        // Find the operator from the actual rows for this date
+        const activeRow = rows.find(r => r.date === date && r.status === 'active');
+        lastActive = date;
+        lastOp = activeRow?.operatorName || '';
         break;
       }
     }
+
     if (streak >= 2) {
       streaks.push({ machine: parseInt(machineNum), streak, lastActive, lastOp });
     }
